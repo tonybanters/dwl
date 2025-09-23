@@ -1,0 +1,205 @@
+#+TITLE: DWL Window Manager Setup
+#+AUTHOR: Tony, btw
+#+DATE: 9-21-2025
+
+* Prerequisites
+
+Before building and using dwl, you'll need to install the following dependencies:
+
+1. wayland, wayland-protocols
+2. wlroots_0_19 (dependency for dwl)
+3. foot (terminal emulator)
+4. base-devel (so we can compile dwl)
+5. git (to clone the 2 repos for dwl, and slstatus)
+6. wmenu (a dmenu clone for wayland)
+7. wl-clipboard (wayland clipboard tool)
+8. grim, slurp for screenshots
+9. swaybg (for wallpapers)
+10. firefox (web browser)
+11. ttf-jetbrains-mono-nerd (font)
+
+** Installation Commands by Distribution
+
+*** Arch Linux
+#+begin_src sh
+sudo pacman -S wayland wayland-protocols wlroots foot base-devel git wmenu wl-clipboard grim slurp swaybg firefox ttf-jetbrains-mono-nerd
+#+end_src
+
+*** Gentoo Linux
+#+begin_src sh
+sudo emerge -av dev-libs/wayland dev-libs/wayland-protocols gui-libs/wlroots x11-terms/foot sys-devel/base-devel dev-vcs/git gui-apps/wmenu gui-apps/wl-clipboard media-gfx/grim gui-apps/slurp gui-apps/swaybg www-client/firefox media-fonts/jetbrains-mono
+#+end_src
+
+*** NixOS
+Add to your =configuration.nix=:
+#+begin_src nix
+environment.systemPackages = with pkgs; [
+  wayland
+  wayland-protocols
+  wlroots_0_19
+  foot
+  git
+  wmenu
+  wl-clipboard
+  grim
+  slurp
+  swaybg
+  firefox
+  jetbrains-mono
+];
+#+end_src
+
+* Colors and Customization
+
+To customize the colors in dwl, you'll need to edit the =config.h= file before compiling. This setup uses the TokyoNight color scheme.
+
+** TokyoNight Color Scheme
+The current configuration uses TokyoNight colors with 32-bit RGBA values:
+
+#+begin_src c
+/* TokyoNight colors (0xRRGGBBAA) */
+static const uint32_t col_bg    = 0x1a1b26ff; /* background */
+static const uint32_t col_fg    = 0xa9b1d6ff; /* foreground */
+static const uint32_t col_blk   = 0x32344aff; /* black (normal) */
+static const uint32_t col_red   = 0xf7768eff; /* red */
+static const uint32_t col_grn   = 0x9ece6aff; /* green */
+static const uint32_t col_ylw   = 0xe0af68ff; /* yellow */
+static const uint32_t col_blu   = 0x7aa2f7ff; /* blue */
+static const uint32_t col_mag   = 0xad8ee6ff; /* magenta */
+static const uint32_t col_cyn   = 0x0db9d7ff; /* cyan (highlight) */
+static const uint32_t col_brblk = 0x444b6aff; /* bright black */
+#+end_src
+
+** Color Applications
+These colors are used in different parts of the interface:
+
+- =SchemeNorm= (vacant tags): Uses =col_fg= on =col_bg= with =col_brblk= borders
+- =SchemeSel= (selected tag): Uses =col_cyn= on =col_bg= with =col_mag= borders
+- =SchemeOcc= (occupied tags): Uses =col_cyn= on =col_bg= with =col_cyn= borders
+- =SchemeUnder= (underlines): Uses =col_mag= on =col_bg= with =col_mag= borders
+
+** Changing Colors for Your Setup
+1. Edit =config.h= in your dwl source directory
+2. Modify the color hex values (format: 0xRRGGBBAA where AA is alpha)
+3. Update the =colors= array to use your preferred color combinations
+4. Recompile dwl with =make clean && make=
+5. Reinstall with =sudo make install=
+
+Popular alternative color schemes:
+- Gruvbox: =#282828=, =#3c3836=, =#ebdbb2=, =#fb4934=
+- Nord: =#2e3440=, =#3b4252=, =#eceff4=, =#88c0d0=
+- Dracula: =#282a36=, =#44475a=, =#f8f8f2=, =#bd93f9=
+
+* slstatus
+
+slstatus is a status bar for dwl that displays system information like time, battery, CPU usage, etc. It uses the same TokyoNight colors for consistency.
+
+** Installation
+#+begin_src sh
+git clone https://git.suckless.org/slstatus
+cd slstatus
+sudo make clean install
+#+end_src
+
+** Configuration
+Edit =config.h= to customize what information is displayed:
+#+begin_src c
+static const struct arg args[] = {
+    /* function format          argument */
+    { datetime, "%s",           "%F %T" },
+    { separator, " | " },
+    { battery_perc, "%s%%",     "BAT0" },
+};
+#+end_src
+
+** Using the Launch Script
+
+The provided script starts both slstatus and dwl together, with slstatus feeding information to dwl's status bar and swaybg setting a wallpaper.
+
+*** Script Content
+#+begin_src sh
+#!/bin/sh
+slstatus -s | dwl -s "sh -c 'swaybg -i /home/tony/walls/wall1.png &'"
+#+end_src
+
+*** Adding Script to PATH
+If you want to add this to your PATH for easy access:
+
+#+begin_src sh
+mkdir ~/.local/bin
+cp ~/start_dwl.sh ~/.local/bin/start_dwl
+vim ~/.bashrc
+# Add this line to ~/.bashrc:
+export PATH="$HOME/.local/bin:$PATH"
+source ~/.bashrc
+#+end_src
+
+Now you can start your desktop environment by simply running =start_dwl= from anywhere.
+
+* Keybinds
+
+Here are all the configured keybinds for this dwl setup. MODKEY is typically the Super/Windows key.
+
+** Application Launchers
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + d= | wmenu | Launch application menu |
+| =MODKEY + Return= | foot | Launch terminal |
+
+** Screenshots
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =Ctrl + F12= | snip script | Take screenshot (via script) |
+| =MODKEY + s= | /home/tony/scripts/snip.sh | Take screenshot |
+| =MODKEY + Shift + S= | Screenshot selection | Select area and copy to clipboard |
+
+** Window Management
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + j= | Focus next | Focus next window in stack |
+| =MODKEY + k= | Focus previous | Focus previous window in stack |
+| =MODKEY + q= | Kill client | Close focused window |
+| =MODKEY + Return= | Zoom | Move focused window to master |
+| =MODKEY + Tab= | View last tag | Switch to previously viewed tag |
+| =MODKEY + e= | Toggle fullscreen | Make window fullscreen |
+| =MODKEY + Shift + Space= | Toggle floating | Make window floating/tiled |
+
+** Layout Management
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + t= | Tiled layout | Set layout to tiled |
+| =MODKEY + f= | Floating layout | Set layout to floating |
+| =MODKEY + m= | Monocle layout | Set layout to monocle |
+| =MODKEY + Space= | Toggle layout | Cycle through layouts |
+| =MODKEY + h= | Decrease master | Decrease master area size |
+| =MODKEY + l= | Increase master | Increase master area size |
+| =MODKEY + i= | Increase masters | Increase number of masters |
+| =MODKEY + p= | Decrease masters | Decrease number of masters |
+
+** Status Bar and Gaps
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + b= | Toggle bar | Show/hide status bar |
+| =MODKEY + a= | Toggle gaps | Enable/disable window gaps |
+
+** Tag Management (Workspaces)
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + [1-9]= | View tag | Switch to tag 1-9 |
+| =MODKEY + Shift + [1-9]= | Move to tag | Move window to tag 1-9 |
+| =MODKEY + 0= | View all tags | Show windows from all tags |
+| =MODKEY + Shift + )= | Tag all | Tag window with all tags |
+
+** Monitor Management
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + ,= | Focus left monitor | Focus monitor to the left |
+| =MODKEY + .= | Focus right monitor | Focus monitor to the right |
+| =MODKEY + Shift + <= | Move to left monitor | Move window to left monitor |
+| =MODKEY + Shift + >= | Move to right monitor | Move window to right monitor |
+
+** System Control
+| Key Combination | Action | Description |
+|-----------------|--------|-------------|
+| =MODKEY + Shift + Q= | Quit dwl | Exit window manager |
+| =Ctrl + Alt + Backspace= | Terminate server | Force quit (emergency exit) |

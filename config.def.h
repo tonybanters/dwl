@@ -6,6 +6,9 @@
 /* appearance */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
+static const int smartgaps                 = 0;  /* 1 means no outer gap when there is only one window */
+static int gaps                            = 1;  /* 1 means gaps between windows are added */
+static const unsigned int gappx            = 3; /* gap pixel between windows */
 static const unsigned int borderpx         = 0;  /* border pixel of windows */
 static const int showbar                   = 1; /* 0 means no bar */
 static const int topbar                    = 1; /* 0 means bottom bar */
@@ -204,6 +207,7 @@ static const Key keys[] = {
 	{ MODKEY,                    XKB_KEY_l,          setmfact,       {.f = +0.05f} },
 	{ MODKEY,                    XKB_KEY_Return,     zoom,           {0} },
 	{ MODKEY,                    XKB_KEY_Tab,        view,           {0} },
+	{ MODKEY,                    XKB_KEY_a,          togglegaps,     {0} },
 	{ MODKEY,                    XKB_KEY_q,          killclient,     {0} },
 	{ MODKEY,                    XKB_KEY_t,          setlayout,      {.v = &layouts[0]} },
 	{ MODKEY,                    XKB_KEY_f,          setlayout,      {.v = &layouts[1]} },

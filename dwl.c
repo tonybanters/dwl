@@ -1,6 +1,3 @@
-/*
- * See LICENSE file for copyright and license details.
- */
 #include <getopt.h>
 #include <libinput.h>
 #include <linux/input-event-codes.h>
@@ -219,6 +216,7 @@ struct Monitor {
 	struct wlr_box w; /* window area, layout-relative */
 	struct wl_list layers[4]; /* LayerSurface.link */
 	const Layout *lt[2];
+	int gaps;
 	unsigned int seltags;
 	unsigned int sellt;
 	uint32_t tagset[2];
@@ -371,6 +369,7 @@ static void tile(Monitor *m);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
+static void togglegaps(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void unlocksession(struct wl_listener *listener, void *data);
@@ -565,16 +564,17 @@ textw_no_ansi(Monitor *m, const char *text)
         buffer[wr++] = text[rd++];
     }
     buffer[wr] = '\0';
-    return TEXTW(m, buffer);
+
+    return TEXTW(m, buffer) - m->lrpad;
 }
 
-// Underlines..
+
 static void 
 draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
 {
     int fg = 7, bg = 0, fmt = 0;
     uint32_t pw;
-    int lp = 0; // Start with no left padding for status segments
+    int left_padding = 0; 
     char buffer[256];
     int wr = 0, rd = 0;
 
@@ -596,25 +596,22 @@ draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
                         barcolors[bg],
                         barcolors[bg]
                     });
-                    drwl_text(m->drw, *x, 0, pw + lp, height, lp, buffer, fmt & 1);
+                    drwl_text(m->drw, *x, 0, pw + left_padding, height, left_padding, buffer, fmt & 1);
 
-                    // Draw underline if requested
-                    if (fmt & 2) { // underline flag
+                    if (fmt & 2) { 
                         drwl_setscheme(m->drw, (uint32_t[]){
                             barcolors[fg],
                             barcolors[fg],
                             barcolors[fg]
                         });
-                        drwl_rect(m->drw, *x + lp, height - 2, pw, 1, 1, 0);
+                        drwl_rect(m->drw, *x + left_padding, height - 2, pw, 1, 1, 0);
                     }
 
-                    // *x += pw + lp;
                     *x += pw;
-                    lp = 0;
+                    left_padding = 0;
                     wr = 0;
                 }
 
-                // Parse the color codes
                 char *p = (char*)text + seq_start + 2;
                 while (p < seq_end) {
                     unsigned v = strtoul(p, &p, 10);
@@ -623,11 +620,11 @@ draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
                     } else if (v == 1) {
                         fg |= 8;
                     } else if (v == 4) {
-                        fmt |= 2; // underline
+                        fmt |= 2; 
                     } else if (v == 7) {
                         fmt |= 1;
                     } else if (v == 24) {
-                        fmt &= ~2; // no underline
+                        fmt &= ~2; 
                     } else if (v == 27) {
                         fmt &= ~1;
                     } else if (v >= 30 && v <= 37) {
@@ -636,11 +633,9 @@ draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
                         bg = v % 10;
                     }
 
-                    // Skip separator
                     if (*p == ';') p++;
                 }
 
-                // Skip past the 'm'
                 rd = seq_end - text + 1;
                 continue;
             }
@@ -648,7 +643,6 @@ draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
         buffer[wr++] = text[rd++];
     }
 
-    // Draw any remaining text
     if (wr > 0) {
         buffer[wr] = '\0';
         pw = TEXTW(m, buffer) - lrpad;
@@ -657,92 +651,20 @@ draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
             barcolors[bg],
             barcolors[bg]
         });
-        drwl_text(m->drw, *x, 0, pw + lp, height, lp, buffer, fmt & 1);
+        drwl_text(m->drw, *x, 0, pw + left_padding, height, left_padding, buffer, fmt & 1);
 
-        // Draw underline if requested
-        if (fmt & 2) { // underline flag
+        if (fmt & 2) { 
             drwl_setscheme(m->drw, (uint32_t[]){
                 barcolors[fg],
                 barcolors[fg],
                 barcolors[fg]
             });
-            drwl_rect(m->drw, *x + lp, height - 2, pw, 1, 1, 0);
+            drwl_rect(m->drw, *x + left_padding, height - 2, pw, 1, 1, 0);
         }
 
-        // *x += pw + lp;
         *x += pw;
     }
 }
-
-// Working version
-// static void
-// draw_ansi_segment(Monitor *m, const char *text, int *x, int height, int lrpad)
-// {
-//     int fg = 7, bg = 0, fmt = 0;
-//     uint32_t pw;
-//     int lp = lrpad / 2 - 2;
-//     char buffer[256];
-//     int wr = 0, rd = 0;
-//
-//     while (text[rd] && wr < sizeof(buffer) - 1) {
-//         if (text[rd] == '\033' && text[rd + 1] == '[') {
-//             size_t alen = strspn(text + rd + 2, "0123456789;");
-//             if (text[rd + alen + 2] == 'm') {
-//                 buffer[wr] = '\0';
-//                 if (wr > 0) {  // Only draw if there's actual text
-//                     pw = TEXTW(m, buffer) - lrpad;
-//                     drwl_setscheme(m->drw, (uint32_t[]){
-//                         barcolors[fg],
-//                         barcolors[bg],
-//                         barcolors[bg]
-//                     });
-//                     drwl_text(m->drw, *x, 0, pw + lp, height, lp, buffer, fmt & 1);
-//                     *x += pw + lp;
-//                     lp = 0;
-//                 }
-//
-//                 char *ep = (char *)text + rd + 1;
-//                 while (*ep != 'm') {
-//                     unsigned v = strtoul(ep + 1, &ep, 10);
-//                     if (v == 0) {
-//                         fg = 7; bg = 0; fmt = 0;
-//                     } else if (v == 1) {
-//                         fg |= 8;
-//                     } else if (v == 4) {
-//                         fmt |= 2;
-//                     } else if (v == 7) {
-//                         fmt |= 1;
-//                     } else if (v == 24) {
-//                         fmt &= ~2;
-//                     } else if (v == 27) {
-//                         fmt &= ~1;
-//                     } else if (v >= 30 && v <= 37) {
-//                         fg = (v % 10) | (fg & 8);
-//                     } else if (v >= 40 && v <= 47) {
-//                         bg = v % 10;
-//                     }
-//                 }
-//                 rd += alen + 3;
-//                 wr = 0;
-//                 continue;
-//             }
-//         }
-//         buffer[wr++] = text[rd++];
-//     }
-//
-//     buffer[wr] = '\0';
-//     if (wr > 0) {  // Only draw if there's actual text
-//         pw = TEXTW(m, buffer) - lrpad;
-//         drwl_setscheme(m->drw, (uint32_t[]){
-//             barcolors[fg],
-//             barcolors[bg],
-//             barcolors[bg]
-//         });
-//         drwl_text(m->drw, *x, 0, pw + lp, height, lp, buffer, fmt & 1);
-//         *x += pw + lp;
-//     }
-// }
-
 
 void
 arrange(Monitor *m)
@@ -1414,6 +1336,8 @@ createmon(struct wl_listener *listener, void *data)
 
 	wlr_output_state_init(&state);
 	/* Initialize monitor state using configured rules */
+	m->gaps = gaps;
+
 	m->tagset[0] = m->tagset[1] = 1;
 	for (r = monrules; r < END(monrules); r++) {
 		if (!r->name || strstr(wlr_output->name, r->name)) {
@@ -1763,47 +1687,6 @@ dirtomon(enum wlr_direction dir)
 	return selmon;
 }
 
-// void
-// drawbar(Monitor *m)
-// {
-// 	int x, w, tw = 0;
-// 	int boxs = m->drw->font->height / 9;
-// 	int boxw = m->drw->font->height / 6 + 2;
-// 	uint32_t i, occ = 0, urg = 0;
-// 	Client *c;
-// 	Buffer *buf;
-//
-// 	if (!m->scene_buffer->node.enabled)
-// 		return;
-// 	if (!(buf = bufmon(m)))
-// 		return;
-//
-//     if (m == selmon) {
-//         char stext_copy[sizeof(stext)];
-//         memset(stext_copy, 0, sizeof(stext_copy));  // clear garbage
-//         strncpy(stext_copy, stext, sizeof(stext_copy) - 1);  // prevent overflow
-//
-//         char *segment = strtok(stext_copy, "|");
-//         int x_pos;
-//
-//         /* first calculate total width */
-//         tw = 0;
-//         while (segment) {
-//             tw += TEXTW(m, segment);
-//             segment = strtok(NULL, "|");
-//         }
-//         x_pos = m->b.width - tw;
-//
-//         /* draw each segment with color reset */
-//         memset(stext_copy, 0, sizeof(stext_copy));
-//         strncpy(stext_copy, stext, sizeof(stext_copy) - 1);
-//         segment = strtok(stext_copy, "|");
-//         while (segment) {
-//             draw_ansi_segment(m, segment, &x_pos, m->b.height, m->lrpad);
-//             segment = strtok(NULL, "|");
-//         }
-//     }
-
 void
 drawbar(Monitor *m)
 {
@@ -1822,11 +1705,6 @@ drawbar(Monitor *m)
     // Always clear the entire bar with background color first
     drwl_setscheme(m->drw, colors[SchemeBg]); // or any scheme that uses col_bg
     drwl_rect(m->drw, 0, 0, m->b.width, m->b.height, 1, 0);
-    
-    //     while (segment) {
-    //         draw_ansi_segment(m, segment, &x_pos, m->b.height, 0); // Pass 0 for no padding
-    //         segment = strtok(NULL, "|");
-    //     }
     
     if (m == selmon) {
         char stext_copy[sizeof(stext)];
@@ -2244,6 +2122,29 @@ locksession(struct wl_listener *listener, void *data)
 	wlr_session_lock_v1_send_locked(session_lock);
 }
 
+static Client *
+nexttagged(Client *c) {
+	Client *walked;
+	wl_list_for_each(walked, &clients, link) {
+		if (walked->isfloating || !VISIBLEON(walked, c->mon))
+			continue;
+		return walked;
+	}
+	return NULL;
+}
+
+static void
+attachaside(Client *c) {
+	Client *at = nexttagged(c);
+	if (!at) {
+		/* No tiled clients, insert at head */
+		wl_list_insert(&clients, &c->link);
+		return;
+	}
+	/* Insert after the first tiled client */
+	wl_list_insert(&at->link, &c->link);
+}
+
 void
 mapnotify(struct wl_listener *listener, void *data)
 {
@@ -2289,7 +2190,12 @@ mapnotify(struct wl_listener *listener, void *data)
 	c->geom.height += 2 * c->bw;
 
 	/* Insert this client into client lists. */
-	wl_list_insert(&clients, &c->link);
+	// wl_list_insert(&clients, &c->link);
+    if (clients.prev)
+		// tile at the bottom
+		wl_list_insert(clients.prev, &c->link);
+	else
+		wl_list_insert(&clients, &c->link);
 	wl_list_insert(&fstack, &c->flink);
 
 	/* Set initial monitor, tags, floating status, and focus:
@@ -3208,7 +3114,7 @@ tagmon(const Arg *arg)
 void
 tile(Monitor *m)
 {
-	unsigned int mw, my, ty;
+	unsigned int h, r, e = m->gaps, mw, my, ty;
 	int i, n = 0;
 	Client *c;
 
@@ -3217,23 +3123,30 @@ tile(Monitor *m)
 			n++;
 	if (n == 0)
 		return;
+	if (smartgaps == n)
+		e = 0;
 
 	if (n > m->nmaster)
-		mw = m->nmaster ? (int)roundf(m->w.width * m->mfact) : 0;
+		mw = m->nmaster ? (int)roundf((m->w.width + gappx*e) * m->mfact) : 0;
 	else
 		mw = m->w.width;
-	i = my = ty = 0;
+	i = 0;
+	my = ty = gappx*e;
 	wl_list_for_each(c, &clients, link) {
 		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
 			continue;
 		if (i < m->nmaster) {
-			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
-				.height = (m->w.height - my) / (MIN(n, m->nmaster) - i)}, 0);
-			my += c->geom.height;
+			r = MIN(n, m->nmaster) - i;
+			h = (m->w.height - my - gappx*e - gappx*e * (r - 1)) / r;
+			resize(c, (struct wlr_box){.x = m->w.x + gappx*e, .y = m->w.y + my,
+				.width = mw - 2*gappx*e, .height = h}, 0);
+			my += c->geom.height + gappx*e;
 		} else {
+			r = n - i;
+			h = (m->w.height - ty - gappx*e - gappx*e * (r - 1)) / r;
 			resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
-				.width = m->w.width - mw, .height = (m->w.height - ty) / (n - i)}, 0);
-			ty += c->geom.height;
+				.width = m->w.width - mw - gappx*e, .height = h}, 0);
+			ty += c->geom.height + gappx*e;
 		}
 		i++;
 	}
@@ -3262,6 +3175,13 @@ togglefullscreen(const Arg *arg)
 	Client *sel = focustop(selmon);
 	if (sel)
 		setfullscreen(sel, !sel->isfullscreen);
+}
+
+void
+togglegaps(const Arg *arg)
+{
+	selmon->gaps = !selmon->gaps;
+	arrange(selmon);
 }
 
 void
